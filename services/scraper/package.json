@@ -1,0 +1,27 @@
+{
+  "name": "@sportpulse/scraper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aggregated X scraper engine for SportPulse",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "bullmq": "^5.12.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "pino": "^9.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "pino-pretty": "^11.2.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# env / secrets  (NEVER commit service_role keys, Stripe secrets, etc.)
+.env
+.env.local
+.env.*.local
+
+# build output
+.next/
+dist/
+build/
+out/
+
+# supabase local/cli artifacts
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# logs / os
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

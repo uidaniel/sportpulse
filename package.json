@@ -1,0 +1,20 @@
+{
+  "name": "sportpulse",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "db:push": "supabase db push",
+    "db:push:dry": "supabase db push --dry-run",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff",
+    "db:lint": "supabase db lint",
+    "gen:types": "supabase gen types typescript --linked --schema public > supabase/database.types.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "supabase": "^2.101.0"
+  }
+}

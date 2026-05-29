@@ -1,0 +1,61 @@
+# Render Blueprint — deploys the two always-on workers.
+# (The Next.js dashboard is best deployed on Vercel; see DEPLOY notes.)
+#
+# Both must be always-on: the gateway holds the WhatsApp socket, the scraper
+# polls on a schedule. Render's free web tier spins down after ~15 min idle
+# (which would drop the WhatsApp connection), and workers require a paid plan —
+# so both use the Starter plan.
+services:
+  # WhatsApp gateway — Baileys sockets + HTTP control API (dashboard calls this).
+  - type: web
+    name: sportpulse-gateway
+    runtime: node
+    rootDir: services/whatsapp-gateway
+    plan: starter
+    buildCommand: npm install --include=dev
+    startCommand: npm run start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: WA_PRINT_QR_TERMINAL
+        value: "false"
+      # public, safe to commit:
+      - key: SUPABASE_URL
+        value: https://upfjegitipgsrovminhw.supabase.co
+      # secrets — set these in the Render dashboard (Environment tab):
+      - key: GATEWAY_API_TOKEN
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+
+  # X scraper — cron polling + fan-out to the wa-send queue. No inbound HTTP.
+  - type: worker
+    name: sportpulse-scraper
+    runtime: node
+    rootDir: services/scraper
+    plan: starter
+    buildCommand: npm install --include=dev
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SUPABASE_URL
+        value: https://upfjegitipgsrovminhw.supabase.co
+      - key: RAPIDAPI_HOST
+        value: twitter241.p.rapidapi.com
+      - key: RAPIDAPI_BASE_URL
+        value: https://twitter241.p.rapidapi.com
+      # secrets — set in the Render dashboard:
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
