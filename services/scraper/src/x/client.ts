@@ -16,13 +16,14 @@ const log = logger.child({ module: "x/client" });
 const TWEETS_PER_FETCH = 20;
 const UID_CACHE_PREFIX = "x:uid:";
 
+// The env validator guarantees these are set whenever X_SOURCE=rapidapi.
 const headers = () => ({
-  "x-rapidapi-key": config.RAPIDAPI_KEY,
-  "x-rapidapi-host": config.RAPIDAPI_HOST,
+  "x-rapidapi-key": config.RAPIDAPI_KEY!,
+  "x-rapidapi-host": config.RAPIDAPI_HOST!,
 });
 
 function apiUrl(path: string, params: Record<string, string>): string {
-  const url = new URL(path, config.RAPIDAPI_BASE_URL);
+  const url = new URL(path, config.RAPIDAPI_BASE_URL!);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url.toString();
 }

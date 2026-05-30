@@ -15,11 +15,18 @@ const schema = z.object({
   // Redis / BullMQ (same instance the gateway uses; we enqueue to its wa-send queue)
   REDIS_URL: z.string().startsWith("redis"),
 
-  // RapidAPI X scraper. base URL + path are kept configurable because the exact
-  // provider/endpoint differs; the response mapping lives in x/client.ts.
-  RAPIDAPI_KEY: z.string().min(1),
-  RAPIDAPI_HOST: z.string().min(1),
-  RAPIDAPI_BASE_URL: z.string().url(),
+  // Which X source to use. "rapidapi" hits twitter241 via x/client.ts; "custom"
+  // hits the no-auth scraper in custom_server/ via x/client-custom.ts.
+  X_SOURCE: z.enum(["rapidapi", "custom"]).default("rapidapi"),
+  // Required when X_SOURCE=custom. Points at the custom_server (e.g. https://
+  // sportpulse-scraper.up.railway.app).
+  CUSTOM_SCRAPER_URL: z.string().url().optional(),
+
+  // RapidAPI X scraper. Required when X_SOURCE=rapidapi; optional otherwise so
+  // a custom-only deploy can omit the keys entirely.
+  RAPIDAPI_KEY: z.string().optional(),
+  RAPIDAPI_HOST: z.string().optional(),
+  RAPIDAPI_BASE_URL: z.string().url().optional(),
   // {handle} is substituted with the screen name.
   RAPIDAPI_TWEETS_PATH: z.string().default("/user/tweets?username={handle}"),
 
@@ -35,7 +42,17 @@ const schema = z.object({
   SCRAPER_MAX_TWEETS_PER_CYCLE: z.coerce.number().default(5),
 });
 
-const parsed = schema.safeParse(process.env);
+const refined = schema.superRefine((env, ctx) => {
+  if (env.X_SOURCE === "rapidapi") {
+    for (const key of ["RAPIDAPI_KEY", "RAPIDAPI_HOST", "RAPIDAPI_BASE_URL"] as const) {
+      if (!env[key]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: "required when X_SOURCE=rapidapi" });
+    }
+  } else if (env.X_SOURCE === "custom" && !env.CUSTOM_SCRAPER_URL) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["CUSTOM_SCRAPER_URL"], message: "required when X_SOURCE=custom" });
+  }
+});
+
+const parsed = refined.safeParse(process.env);
 
 if (!parsed.success) {
   const issues = parsed.error.issues

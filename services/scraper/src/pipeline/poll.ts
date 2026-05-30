@@ -2,7 +2,7 @@ import { supabase } from "../supabase";
 import { logger } from "../logger";
 import { config } from "../config";
 import { redisConnection } from "../queue/connection";
-import { fetchLatestTweets } from "../x/client";
+import { fetchLatestTweets } from "../x";
 import { fanOutTweet } from "./fanout";
 
 const log = logger.child({ module: "poll" });
