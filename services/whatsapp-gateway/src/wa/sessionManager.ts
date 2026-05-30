@@ -28,13 +28,18 @@ interface SessionEntry {
   /** in-memory state for HTTP polling (Realtime is unreliable on some networks) */
   status: WhatsAppStatus;
   lastQr: string | null;
+  /** phone-number pairing: when set, link via code instead of QR */
+  usePairing: boolean;
+  pairingCode: string | null;
 }
 
 /** Current state for HTTP polling; null if no live session in this process. */
-export function getSessionState(userId: string): { status: WhatsAppStatus; qr: string | null } | null {
+export function getSessionState(
+  userId: string,
+): { status: WhatsAppStatus; qr: string | null; pairingCode: string | null } | null {
   const entry = sessions.get(userId);
   if (!entry) return null;
-  return { status: entry.status, qr: entry.lastQr };
+  return { status: entry.status, qr: entry.lastQr, pairingCode: entry.pairingCode };
 }
 
 const sessions = new Map<string, SessionEntry>();
@@ -56,7 +61,7 @@ export function isConnected(userId: string): boolean {
  * Start (or restart) a WhatsApp socket for a user. Idempotent: calling it while
  * a live socket exists is a no-op so the dashboard can safely retry.
  */
-export async function connect(userId: string): Promise<void> {
+export async function connect(userId: string, phoneNumber?: string): Promise<void> {
   if (sessions.get(userId)?.sock.user) {
     log.info({ userId }, "connect requested but session already open");
     return;
@@ -65,6 +70,7 @@ export async function connect(userId: string): Promise<void> {
   const session = await getOrCreateSession(userId);
   const auth = await useSupabaseAuthState(session.id);
   const { version } = await fetchLatestBaileysVersion();
+  const usePairing = Boolean(phoneNumber) && !auth.state.creds.registered;
 
   const sock = makeWASocket({
     version,
@@ -88,10 +94,28 @@ export async function connect(userId: string): Promise<void> {
     reconnectAttempts: sessions.get(userId)?.reconnectAttempts ?? 0,
     status: "connecting",
     lastQr: null,
+    usePairing,
+    pairingCode: null,
   };
   sessions.set(userId, entry);
 
   sock.ev.on("creds.update", auth.saveCreds);
+
+  // Phone-number linking: request an 8-char pairing code instead of a QR.
+  // A brief delay lets the socket reach WhatsApp before requesting.
+  if (usePairing && phoneNumber) {
+    const number = phoneNumber.replace(/[^0-9]/g, "");
+    setTimeout(() => {
+      sock
+        .requestPairingCode(number)
+        .then((code) => {
+          entry.pairingCode = code;
+          entry.status = "connecting";
+          log.info({ userId }, "pairing code issued");
+        })
+        .catch((err) => log.error({ err, userId }, "requestPairingCode failed"));
+    }, 3000);
+  }
 
   // Channels the account follows/owns surface as @newsletter chats during sync.
   sock.ev.on("messaging-history.set", ({ chats }) => {
@@ -111,7 +135,8 @@ async function handleConnectionUpdate(entry: SessionEntry, update: Partial<Conne
   const { connection, lastDisconnect, qr } = update;
   const { userId, sessionId } = entry;
 
-  if (qr) {
+  // In pairing-code mode we link via the code, so ignore QR events.
+  if (qr && !entry.usePairing) {
     log.info({ userId }, "new QR issued");
     entry.status = "connecting";
     entry.lastQr = qr;
@@ -131,6 +156,7 @@ async function handleConnectionUpdate(entry: SessionEntry, update: Partial<Conne
     entry.reconnectAttempts = 0;
     entry.status = "connected";
     entry.lastQr = null;
+    entry.pairingCode = null;
     const phoneJid = entry.sock.user?.id ?? null;
     log.info({ userId, phoneJid }, "connection open");
     await updateStatus(sessionId, "connected", { phone_jid: phoneJid, last_connect: true });

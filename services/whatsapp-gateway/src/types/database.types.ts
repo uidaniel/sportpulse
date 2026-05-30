@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       feed_configurations: {
         Row: {
+          channel_id: string | null
           created_at: string
           exclude_links: boolean
           forward_media: boolean
@@ -29,6 +30,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          channel_id?: string | null
           created_at?: string
           exclude_links?: boolean
           forward_media?: boolean
@@ -42,6 +44,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          channel_id?: string | null
           created_at?: string
           exclude_links?: boolean
           forward_media?: boolean
@@ -55,6 +58,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "feed_configurations_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "feed_configurations_tracked_handle_id_fkey"
             columns: ["tracked_handle_id"]
@@ -74,7 +84,9 @@ export type Database = {
       plan_limits: {
         Row: {
           allow_link_filter: boolean
+          allow_scheduling: boolean
           allow_video: boolean
+          max_channels: number
           max_handles: number
           max_send_delay_ms: number
           min_send_delay_ms: number
@@ -84,7 +96,9 @@ export type Database = {
         }
         Insert: {
           allow_link_filter?: boolean
+          allow_scheduling?: boolean
           allow_video?: boolean
+          max_channels?: number
           max_handles: number
           max_send_delay_ms?: number
           min_send_delay_ms?: number
@@ -94,7 +108,9 @@ export type Database = {
         }
         Update: {
           allow_link_filter?: boolean
+          allow_scheduling?: boolean
           allow_video?: boolean
+          max_channels?: number
           max_handles?: number
           max_send_delay_ms?: number
           min_send_delay_ms?: number
@@ -111,6 +127,10 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          schedule_enabled: boolean
+          schedule_end: string
+          schedule_start: string
+          timezone: string
           updated_at: string
         }
         Insert: {
@@ -119,6 +139,10 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          schedule_enabled?: boolean
+          schedule_end?: string
+          schedule_start?: string
+          timezone?: string
           updated_at?: string
         }
         Update: {
@@ -127,6 +151,10 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          schedule_enabled?: boolean
+          schedule_end?: string
+          schedule_start?: string
+          timezone?: string
           updated_at?: string
         }
         Relationships: []
@@ -267,6 +295,30 @@ export type Database = {
           },
         ]
       }
+      whatsapp_channels: {
+        Row: {
+          channel_jid: string
+          channel_name: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          channel_jid: string
+          channel_name?: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          channel_jid?: string
+          channel_name?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_sessions: {
         Row: {
           created_at: string
@@ -342,6 +394,7 @@ export type Database = {
     Functions: {
       add_feed_configuration: {
         Args: {
+          p_channel_id?: string
           p_exclude_links?: boolean
           p_forward_media?: boolean
           p_include_replies?: boolean
@@ -350,6 +403,7 @@ export type Database = {
           p_screen_name: string
         }
         Returns: {
+          channel_id: string | null
           created_at: string
           exclude_links: boolean
           forward_media: boolean
@@ -370,6 +424,22 @@ export type Database = {
         }
       }
       add_tracked_handle: { Args: { p_screen_name: string }; Returns: string }
+      add_whatsapp_channel: {
+        Args: { p_channel_jid: string; p_channel_name?: string }
+        Returns: {
+          channel_jid: string
+          channel_name: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "whatsapp_channels"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       due_handles: {
         Args: never
         Returns: {

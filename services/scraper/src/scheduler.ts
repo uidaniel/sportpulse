@@ -36,7 +36,9 @@ export async function enqueueDueHandles(): Promise<number> {
     await pollQueue.add(
       "poll-handle",
       { handleId: h.id, screenName: h.screen_name },
-      { jobId: `poll-${h.id}`, removeOnComplete: true, removeOnFail: 100 },
+      // removeOnFail:true is important — a retained failed job keeps its jobId
+      // and would block every future tick from re-polling this handle (dedup).
+      { jobId: `poll-${h.id}`, removeOnComplete: true, removeOnFail: true },
     );
   }
 

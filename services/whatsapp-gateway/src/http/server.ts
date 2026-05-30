@@ -49,7 +49,11 @@ export function buildServer() {
     "/sessions/:userId/connect",
     asyncHandler(async (req, res) => {
       const { userId } = userIdParam.parse(req.params);
-      await connect(userId);
+      const phoneNumber =
+        typeof req.body?.phoneNumber === "string" && req.body.phoneNumber.trim()
+          ? req.body.phoneNumber
+          : undefined;
+      await connect(userId, phoneNumber);
       res.json({ ok: true, userId, connected: isConnected(userId) });
     }),
   );
