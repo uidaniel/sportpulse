@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* SportPulse — dark WhatsApp-green theme */
+@theme {
+  --color-base: #07120d; /* page background, deep green-black */
+  --color-surface: #0e1c15; /* cards / panels */
+  --color-surface-2: #14271d; /* elevated surfaces, inputs */
+  --color-line: #1f3a2c; /* borders / dividers */
+  --color-line-soft: #16271d;
+
+  --color-foreground: #e8f3ec; /* primary text */
+  --color-muted: #8fb0a0; /* secondary text */
+  --color-faint: #5c7568; /* tertiary text */
+
+  --color-brand: #25d366; /* WhatsApp green */
+  --color-brand-strong: #1fb457; /* hover */
+  --color-brand-soft: #103a25; /* tints / chips */
+  --color-on-brand: #04200f; /* text on bright green */
+  --color-accent: #00a884; /* WhatsApp teal accent */
+
+  --color-danger: #f0506e;
+  --color-warning: #f5b544;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-base);
+    color: var(--color-foreground);
+    /* soft green glows */
+    background-image:
+      radial-gradient(60rem 40rem at 80% -10%, rgba(37, 211, 102, 0.1), transparent 60%),
+      radial-gradient(50rem 40rem at -10% 10%, rgba(0, 168, 132, 0.08), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(37, 211, 102, 0.3);
+    color: #fff;
+  }
+
+  /* dark scrollbars */
+  * {
+    scrollbar-color: var(--color-line) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a4d3a;
+  }
+}
+
+@layer utilities {
+  /* green gradient text for headings */
+  .text-gradient {
+    background: linear-gradient(100deg, #eafff2 0%, #6ff0a4 45%, #25d366 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* subtle bordered glass panel */
+  .panel {
+    background: linear-gradient(180deg, rgba(20, 39, 29, 0.7), rgba(14, 28, 21, 0.7));
+    border: 1px solid var(--color-line);
+    backdrop-filter: blur(8px);
+  }
+
+  .glow-brand {
+    box-shadow:
+      0 0 0 1px rgba(37, 211, 102, 0.15),
+      0 18px 60px -20px rgba(37, 211, 102, 0.45);
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(37, 211, 102, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 211, 102, 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+}
