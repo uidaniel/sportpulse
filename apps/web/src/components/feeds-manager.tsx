@@ -15,6 +15,7 @@ export interface Feed {
   forward_media: boolean;
   include_videos: boolean;
   exclude_links: boolean;
+  include_quotes: boolean;
 }
 
 export interface ChannelOption {
@@ -27,7 +28,8 @@ type FilterKey =
   | "include_replies"
   | "forward_media"
   | "include_videos"
-  | "exclude_links";
+  | "exclude_links"
+  | "include_quotes";
 
 const HANDLE_RE = /^@?[A-Za-z0-9_]{1,15}$/;
 
@@ -58,6 +60,7 @@ export function FeedsManager({
   const [forwardMedia, setForwardMedia] = useState(true);
   const [includeVideos, setIncludeVideos] = useState(false);
   const [excludeLinks, setExcludeLinks] = useState(false);
+  const [includeQuotes, setIncludeQuotes] = useState(true);
   const [adding, setAdding] = useState(false);
 
   const channelById = new Map(channels.map((c) => [c.id, c]));
@@ -87,6 +90,7 @@ export function FeedsManager({
       p_forward_media: forwardMedia,
       p_include_videos: allowVideo ? includeVideos : false,
       p_exclude_links: allowLinkFilter ? excludeLinks : false,
+      p_include_quotes: includeQuotes,
     });
     setAdding(false);
 
@@ -106,6 +110,7 @@ export function FeedsManager({
           forward_media: data.forward_media,
           include_videos: data.include_videos,
           exclude_links: data.exclude_links,
+          include_quotes: data.include_quotes,
         },
       ]);
       setHandle("");
@@ -115,6 +120,7 @@ export function FeedsManager({
       setForwardMedia(true);
       setIncludeVideos(false);
       setExcludeLinks(false);
+      setIncludeQuotes(true);
       toast.success(`Now tracking @${clean}.`);
     }
   };
@@ -130,7 +136,9 @@ export function FeedsManager({
             ? { forward_media: value }
             : key === "include_videos"
               ? { include_videos: value }
-              : { exclude_links: value };
+              : key === "exclude_links"
+                ? { exclude_links: value }
+                : { include_quotes: value };
     const { error } = await supabase.from("feed_configurations").update(patch).eq("id", feed.id);
     if (error) {
       toast.error("Couldn't update filter.");
@@ -286,6 +294,7 @@ export function FeedsManager({
                 disabled={!allowLinkFilter}
                 badge={!allowLinkFilter ? "Basic+" : undefined}
               />
+              <ToggleRow id="new-qt" label="Quoted tweets" checked={includeQuotes} onChange={setIncludeQuotes} />
             </div>
           </div>
         )}
@@ -357,6 +366,7 @@ export function FeedsManager({
                     <ToggleRow id={`${feed.id}-md`} label="Photos" checked={feed.forward_media} onChange={(v) => toggle(feed, "forward_media", v)} />
                     <ToggleRow id={`${feed.id}-vd`} label="Videos" checked={feed.include_videos} onChange={(v) => toggle(feed, "include_videos", v)} disabled={!allowVideo} badge={!allowVideo ? "Pro" : undefined} />
                     <ToggleRow id={`${feed.id}-nl`} label="Exclude links" checked={feed.exclude_links} onChange={(v) => toggle(feed, "exclude_links", v)} disabled={!allowLinkFilter} badge={!allowLinkFilter ? "Basic+" : undefined} />
+                    <ToggleRow id={`${feed.id}-qt`} label="Quoted tweets" checked={feed.include_quotes} onChange={(v) => toggle(feed, "include_quotes", v)} />
                   </div>
                 </li>
               );

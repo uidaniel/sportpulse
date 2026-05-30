@@ -10,7 +10,7 @@ export default async function FeedsPage() {
 
   const { data: configs } = await supabase
     .from("feed_configurations")
-    .select("id, tracked_handle_id, include_retweets, include_replies, forward_media, include_videos, exclude_links")
+    .select("id, tracked_handle_id, include_retweets, include_replies, forward_media, include_videos, exclude_links, include_quotes")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -49,6 +49,7 @@ export default async function FeedsPage() {
     forward_media: c.forward_media,
     include_videos: c.include_videos,
     exclude_links: c.exclude_links,
+    include_quotes: c.include_quotes,
   }));
 
   const { data: channels } = await supabase

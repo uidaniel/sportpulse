@@ -26,7 +26,7 @@ interface Subscriber {
 async function getSubscribers(handleId: string): Promise<Subscriber[]> {
   const { data: configs, error } = await supabase
     .from("feed_configurations")
-    .select("id, user_id, include_retweets, include_replies, forward_media, include_videos, exclude_links")
+    .select("id, user_id, include_retweets, include_replies, forward_media, include_videos, exclude_links, include_quotes")
     .eq("tracked_handle_id", handleId)
     .eq("is_active", true);
   if (error) throw error;
@@ -106,6 +106,7 @@ async function getSubscribers(handleId: string): Promise<Subscriber[]> {
       forward_media: c.forward_media,
       include_videos: c.include_videos,
       exclude_links: c.exclude_links,
+      include_quotes: c.include_quotes,
     };
     for (const ch of channels) {
       out.push({ feedConfigId: c.id, userId: c.user_id, filters, channelId: ch.channelId, channelJid: ch.channelJid, branded, window });

@@ -54,6 +54,7 @@ export type Database = {
           exclude_links: boolean
           forward_media: boolean
           id: string
+          include_quotes: boolean
           include_replies: boolean
           include_retweets: boolean
           include_videos: boolean
@@ -68,6 +69,7 @@ export type Database = {
           exclude_links?: boolean
           forward_media?: boolean
           id?: string
+          include_quotes?: boolean
           include_replies?: boolean
           include_retweets?: boolean
           include_videos?: boolean
@@ -82,6 +84,7 @@ export type Database = {
           exclude_links?: boolean
           forward_media?: boolean
           id?: string
+          include_quotes?: boolean
           include_replies?: boolean
           include_retweets?: boolean
           include_videos?: boolean
@@ -440,6 +443,7 @@ export type Database = {
           p_channel_ids?: string[]
           p_exclude_links?: boolean
           p_forward_media?: boolean
+          p_include_quotes?: boolean
           p_include_replies?: boolean
           p_include_retweets?: boolean
           p_include_videos?: boolean
@@ -451,6 +455,7 @@ export type Database = {
           exclude_links: boolean
           forward_media: boolean
           id: string
+          include_quotes: boolean
           include_replies: boolean
           include_retweets: boolean
           include_videos: boolean

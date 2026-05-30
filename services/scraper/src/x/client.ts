@@ -129,6 +129,11 @@ function pushTweet(result: any, screenName: string, out: NormalizedTweet[]): voi
     legacy?.entities?.urls ?? tweet?.note_tweet?.note_tweet_results?.result?.entity_set?.urls ?? [];
   const hasLinks = Array.isArray(urlEntities) && urlEntities.length > 0;
 
+  // Quote tweets put the referenced tweet on either the wrapper or the legacy
+  // payload depending on the GraphQL slice; check both.
+  const quotedRaw = tweet?.quoted_status_result?.result ?? legacy?.quoted_status_result?.result ?? null;
+  const quoted = extractQuoted(quotedRaw);
+
   out.push({
     id: String(id),
     text,
@@ -139,7 +144,27 @@ function pushTweet(result: any, screenName: string, out: NormalizedTweet[]): voi
     videoUrl: media.video,
     hasLinks,
     url: `https://x.com/${author ?? screenName}/status/${id}`,
+    quoted,
   });
+}
+
+function extractQuoted(result: any): import("./types").QuotedTweet | null {
+  if (!result) return null;
+  const inner = result.__typename === "TweetWithVisibilityResults" ? result.tweet : result;
+  const legacy = inner?.legacy;
+  if (!legacy) return null;
+  const author: string | undefined =
+    inner?.core?.user_results?.result?.core?.screen_name ??
+    inner?.core?.user_results?.result?.legacy?.screen_name;
+  const text: string =
+    inner?.note_tweet?.note_tweet_results?.result?.text || legacy.full_text || "";
+  const media = extractMedia(legacy);
+  return {
+    authorScreenName: author ?? "unknown",
+    text,
+    mediaUrl: media.images[0] ?? null,
+    videoUrl: media.video,
+  };
 }
 
 function extractMedia(legacy: any): { images: string[]; video: string | null } {

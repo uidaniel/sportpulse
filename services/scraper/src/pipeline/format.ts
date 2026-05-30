@@ -51,8 +51,33 @@ export function formatMessage(
     mediaType = "image";
   }
 
-  // Just the cleaned post text + media — no handle header, no permalink.
   let text = body;
+
+  // Quote tweet: render the quoted post as a WhatsApp blockquote underneath
+  // the main text, and if the host tweet had no media of its own, fall back to
+  // the quoted tweet's media so readers see the visual context (e.g. the
+  // infographic that the original poster was reacting to).
+  if (tweet.quoted) {
+    const qText = cleanText(tweet.quoted.text);
+    if (qText) {
+      const quoteLines = qText
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+      const sep = text ? "\n\n" : "";
+      text += `${sep}> *@${tweet.quoted.authorScreenName}:*\n${quoteLines}`;
+    }
+    if (!mediaUrl) {
+      if (filters.include_videos && tweet.quoted.videoUrl) {
+        mediaUrl = tweet.quoted.videoUrl;
+        mediaType = "video";
+      } else if (filters.forward_media && tweet.quoted.mediaUrl) {
+        mediaUrl = tweet.quoted.mediaUrl;
+        mediaType = "image";
+      }
+    }
+  }
+
   if (branded) text += WATERMARK;
 
   return { text, mediaUrl, mediaType };
