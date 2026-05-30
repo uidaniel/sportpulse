@@ -11,6 +11,11 @@ import makeWASocket, {
 // window in the UI so users always have a grace period to retype before it goes
 // stale on WhatsApp's side.
 const PAIRING_CODE_TTL_MS = 2 * 60 * 1000;
+// QR codes auto-rotate, but we still cap the whole session attempt at 2 minutes
+// so a forgotten tab doesn't keep a socket open forever and the user gets a
+// clear "expired — reconnect" affordance instead of a stale code that won't
+// scan.
+const QR_SESSION_TTL_MS = 2 * 60 * 1000;
 import { Boom } from "@hapi/boom";
 import qrcodeTerminal from "qrcode-terminal";
 import { config } from "../config";
@@ -39,23 +44,38 @@ interface SessionEntry {
   pairingCode: string | null;
   /** epoch ms when the current pairing code expires (or 0 if none) */
   pairingCodeExpiresAt: number;
+  /** epoch ms when the current QR session window expires (or 0 if none) */
+  qrExpiresAt: number;
+  /** timer that forces the socket closed when the QR window ends unscanned */
+  qrExpireTimer?: NodeJS.Timeout;
 }
 
 /** Current state for HTTP polling; null if no live session in this process. */
 export function getSessionState(
   userId: string,
-): { status: WhatsAppStatus; qr: string | null; pairingCode: string | null; pairingCodeExpiresAt: number } | null {
+): {
+  status: WhatsAppStatus;
+  qr: string | null;
+  qrExpiresAt: number;
+  pairingCode: string | null;
+  pairingCodeExpiresAt: number;
+} | null {
   const entry = sessions.get(userId);
   if (!entry) return null;
-  // Self-expire so the dashboard never sees a stale code beyond the TTL even if
-  // the user keeps the tab open without re-polling.
-  if (entry.pairingCode && Date.now() >= entry.pairingCodeExpiresAt) {
+  // Self-expire so the dashboard never sees stale credentials beyond their TTL
+  // even if the user keeps the tab open without re-polling.
+  const now = Date.now();
+  if (entry.pairingCode && now >= entry.pairingCodeExpiresAt) {
     entry.pairingCode = null;
     entry.pairingCodeExpiresAt = 0;
+  }
+  if (entry.lastQr && entry.qrExpiresAt && now >= entry.qrExpiresAt) {
+    entry.lastQr = null;
   }
   return {
     status: entry.status,
     qr: entry.lastQr,
+    qrExpiresAt: entry.qrExpiresAt,
     pairingCode: entry.pairingCode,
     pairingCodeExpiresAt: entry.pairingCodeExpiresAt,
   };
@@ -119,6 +139,7 @@ export async function connect(userId: string, phoneNumber?: string): Promise<voi
     usePairing,
     pairingCode: null,
     pairingCodeExpiresAt: 0,
+    qrExpiresAt: 0,
   };
   sessions.set(userId, entry);
 
@@ -164,6 +185,13 @@ async function handleConnectionUpdate(entry: SessionEntry, update: Partial<Conne
     log.info({ userId }, "new QR issued");
     entry.status = "connecting";
     entry.lastQr = qr;
+    // Start the 2-minute QR-session timer on the FIRST QR for this attempt;
+    // Baileys rotates QR codes internally and we keep the same expiry across
+    // rotations so the user gets a predictable countdown.
+    if (!entry.qrExpiresAt) {
+      entry.qrExpiresAt = Date.now() + QR_SESSION_TTL_MS;
+      entry.qrExpireTimer = setTimeout(() => expireQrSession(entry), QR_SESSION_TTL_MS);
+    }
     await updateStatus(sessionId, "connecting");
     void realtime.publishStatus(userId, "connecting");
     void realtime.publishQr(userId, qr);
@@ -180,6 +208,11 @@ async function handleConnectionUpdate(entry: SessionEntry, update: Partial<Conne
     entry.reconnectAttempts = 0;
     entry.status = "connected";
     entry.lastQr = null;
+    entry.qrExpiresAt = 0;
+    if (entry.qrExpireTimer) {
+      clearTimeout(entry.qrExpireTimer);
+      entry.qrExpireTimer = undefined;
+    }
     entry.pairingCode = null;
     entry.pairingCodeExpiresAt = 0;
     const phoneJid = entry.sock.user?.id ?? null;
@@ -262,6 +295,7 @@ export async function logout(userId: string): Promise<void> {
 function cleanup(userId: string): void {
   const entry = sessions.get(userId);
   if (entry?.reconnectTimer) clearTimeout(entry.reconnectTimer);
+  if (entry?.qrExpireTimer) clearTimeout(entry.qrExpireTimer);
   try {
     entry?.sock.ev.removeAllListeners("connection.update");
     entry?.sock.end(undefined);
@@ -270,6 +304,26 @@ function cleanup(userId: string): void {
   }
   sessions.delete(userId);
   void realtime.close(userId);
+}
+
+/**
+ * Force-end an unscanned QR session at the 2-minute mark. Marks the close as
+ * intentional so the reconnect loop doesn't fire, and surfaces "disconnected"
+ * status so the dashboard can show its "QR expired — reconnect" affordance.
+ */
+function expireQrSession(entry: SessionEntry): void {
+  if (entry.status === "connected") return; // they linked in time; nothing to do
+  log.info({ userId: entry.userId }, "QR session expired without scan; tearing down");
+  entry.intentionalClose = true;
+  entry.lastQr = null;
+  entry.qrExpiresAt = 0;
+  entry.status = "disconnected";
+  void updateStatus(entry.sessionId, "disconnected", {
+    last_disconnect: true,
+    last_disconnect_reason: "qr_expired",
+  });
+  void realtime.publishStatus(entry.userId, "disconnected", { reason: "qr_expired" });
+  cleanup(entry.userId);
 }
 
 // Integration seam for the §7 transactional re-auth alert (email/push).

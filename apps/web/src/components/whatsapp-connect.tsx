@@ -19,6 +19,7 @@ const STATUS_META: Record<Status, { label: string; dot: string; badge: string }>
 export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [qr, setQr] = useState<string | null>(null);
+  const [qrExpiresAt, setQrExpiresAt] = useState<number>(0);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [pairingExpiresAt, setPairingExpiresAt] = useState<number>(0);
   const [now, setNow] = useState<number>(() => Date.now());
@@ -36,11 +37,13 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
         const body = (await res.json()) as {
           status: Status;
           qr: string | null;
+          qrExpiresAt?: number;
           pairingCode?: string | null;
           pairingCodeExpiresAt?: number;
         };
         if (!active) return;
         setQr(body.qr ?? null);
+        setQrExpiresAt(body.qrExpiresAt ?? 0);
         setPairingCode(body.pairingCode ?? null);
         setPairingExpiresAt(body.pairingCodeExpiresAt ?? 0);
         if (body.status !== statusRef.current) {
@@ -49,6 +52,7 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
           setStatus(body.status);
           if (body.status === "logged_out") {
             setQr(null);
+            setQrExpiresAt(0);
             setPairingCode(null);
             setPairingExpiresAt(0);
             // Don't double-toast on first paint (page loaded already-logged-out).
@@ -67,12 +71,14 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
     };
   }, []);
 
-  // Tick once a second so the countdown renders smoothly.
+  // Tick once a second so either countdown (QR or pairing) renders smoothly.
   useEffect(() => {
-    if (!pairingCode || !pairingExpiresAt) return;
+    const hasPairing = Boolean(pairingCode && pairingExpiresAt);
+    const hasQr = Boolean(qr && qrExpiresAt);
+    if (!hasPairing && !hasQr) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [pairingCode, pairingExpiresAt]);
+  }, [pairingCode, pairingExpiresAt, qr, qrExpiresAt]);
 
   const handleConnect = async () => {
     if (mode === "phone" && phone.replace(/[^0-9]/g, "").length < 7) {
@@ -82,6 +88,7 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
     setBusy(true);
     setStatus("connecting");
     setQr(null);
+    setQrExpiresAt(0);
     setPairingCode(null);
     setPairingExpiresAt(0);
     try {
@@ -123,11 +130,18 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
   const pairingMsLeft = pairingCode && pairingExpiresAt ? Math.max(0, pairingExpiresAt - now) : 0;
   const pairingExpired = pairingCode != null && pairingMsLeft === 0;
   const displayPairing = pairingCode && !pairingExpired ? pairingCode : null;
-  const pairingMmSs = (() => {
-    if (!displayPairing) return null;
-    const s = Math.ceil(pairingMsLeft / 1000);
+  const fmtMmSs = (ms: number) => {
+    const s = Math.ceil(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  })();
+  };
+  const pairingMmSs = displayPairing ? fmtMmSs(pairingMsLeft) : null;
+
+  // QR countdown: a 2-minute session window. Once it elapses the gateway
+  // tears the socket down, so we hide the QR and surface a "Get new QR" CTA.
+  const qrMsLeft = qr && qrExpiresAt ? Math.max(0, qrExpiresAt - now) : 0;
+  const qrExpired = qr != null && qrExpiresAt > 0 && qrMsLeft === 0;
+  const displayQr = qr && !qrExpired ? qr : null;
+  const qrMmSs = displayQr && qrExpiresAt ? fmtMmSs(qrMsLeft) : null;
 
   return (
     <Card className="overflow-hidden">
@@ -171,12 +185,26 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
             </div>
 
             {/* QR mode */}
-            {mode === "qr" && qr ? (
-              <div className="flex flex-col items-center gap-4 rounded-2xl border border-line bg-surface-2/50 py-8">
+            {mode === "qr" && displayQr ? (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface-2/50 py-8">
                 <div className="rounded-2xl bg-white p-4 shadow-lg">
-                  <QRCode value={qr} size={208} />
+                  <QRCode value={displayQr} size={208} />
                 </div>
+                <p className="text-xs text-muted">
+                  Expires in <span className="font-mono font-semibold text-foreground">{qrMmSs}</span>
+                </p>
                 <p className="text-center text-xs text-muted">WhatsApp → Linked devices → Link a device</p>
+              </div>
+            ) : null}
+
+            {/* QR mode: code expired — prompt to regenerate */}
+            {mode === "qr" && qrExpired ? (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-warning/30 bg-warning/10 py-8 text-center">
+                <p className="text-sm font-medium text-warning">Your QR code expired.</p>
+                <p className="max-w-xs text-xs text-warning/80">Generate a new one to continue linking your device.</p>
+                <Button onClick={handleConnect} disabled={busy}>
+                  {busy ? <Spinner /> : null} Get new QR code
+                </Button>
               </div>
             ) : null}
 
@@ -221,15 +249,15 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
               </div>
             ) : null}
 
-            {connecting && !qr && !displayPairing && !pairingExpired ? (
+            {connecting && !displayQr && !displayPairing && !pairingExpired && !qrExpired ? (
               <div className="flex items-center justify-center gap-3 rounded-2xl border border-line bg-surface-2/50 py-8 text-muted">
                 <Spinner className="text-brand" /> {mode === "phone" ? "Generating code…" : "Waiting for QR code…"}
               </div>
             ) : null}
 
-            {!pairingExpired ? (
+            {!pairingExpired && !qrExpired ? (
               <div className="flex flex-wrap gap-3">
-                <Button onClick={handleConnect} disabled={busy || (connecting && (Boolean(qr) || Boolean(displayPairing)))}>
+                <Button onClick={handleConnect} disabled={busy || (connecting && (Boolean(displayQr) || Boolean(displayPairing)))}>
                   {busy || connecting ? <Spinner /> : null}
                   {mode === "phone" ? (isLoggedOut ? "Pair again" : "Get pairing code") : isLoggedOut ? "Pair again" : "Connect WhatsApp"}
                 </Button>
