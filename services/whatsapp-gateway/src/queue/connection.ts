@@ -8,6 +8,7 @@ export const SEND_QUEUE = "wa-send";
 export interface SendJobData {
   userId: string;
   channelJid: string;
+  channelId: string; // whatsapp_channels.id — narrows published_messages updates per channel
   text: string;
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;

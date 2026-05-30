@@ -10,7 +10,7 @@ export default async function FeedsPage() {
 
   const { data: configs } = await supabase
     .from("feed_configurations")
-    .select("id, tracked_handle_id, channel_id, include_retweets, include_replies, forward_media, include_videos, exclude_links")
+    .select("id, tracked_handle_id, include_retweets, include_replies, forward_media, include_videos, exclude_links")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -25,10 +25,25 @@ export default async function FeedsPage() {
     (handles ?? []).forEach((h) => handleMap.set(h.id, h.screen_name));
   }
 
+  // Wave 3a: a feed can route to multiple channels — pull them all in one shot.
+  const configIds = (configs ?? []).map((c) => c.id);
+  const routesByFeed = new Map<string, string[]>();
+  if (configIds.length) {
+    const { data: routes } = await supabase
+      .from("feed_channel_routes")
+      .select("feed_configuration_id, channel_id")
+      .in("feed_configuration_id", configIds);
+    for (const r of routes ?? []) {
+      const arr = routesByFeed.get(r.feed_configuration_id) ?? [];
+      arr.push(r.channel_id);
+      routesByFeed.set(r.feed_configuration_id, arr);
+    }
+  }
+
   const feeds: Feed[] = (configs ?? []).map((c) => ({
     id: c.id,
     screen_name: handleMap.get(c.tracked_handle_id) ?? "unknown",
-    channel_id: c.channel_id,
+    channel_ids: routesByFeed.get(c.id) ?? [],
     include_retweets: c.include_retweets,
     include_replies: c.include_replies,
     forward_media: c.forward_media,
@@ -59,7 +74,7 @@ export default async function FeedsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Feeds</h1>
         <p className="text-sm text-muted">
-          Choose which X accounts to mirror to your WhatsApp channel, and how.
+          Choose which X accounts to mirror to your WhatsApp channels, and how.
         </p>
       </div>
       <FeedsManager
@@ -69,6 +84,7 @@ export default async function FeedsPage() {
         tier={tier}
         allowVideo={limit?.allow_video ?? false}
         allowLinkFilter={limit?.allow_link_filter ?? false}
+        isPro={tier === "pro"}
       />
     </div>
   );

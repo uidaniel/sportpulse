@@ -20,6 +20,8 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [qr, setQr] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingExpiresAt, setPairingExpiresAt] = useState<number>(0);
+  const [now, setNow] = useState<number>(() => Date.now());
   const [mode, setMode] = useState<Mode>("qr");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,17 +33,26 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
       try {
         const res = await fetch("/api/whatsapp/state");
         if (!res.ok) return;
-        const body = (await res.json()) as { status: Status; qr: string | null; pairingCode?: string | null };
+        const body = (await res.json()) as {
+          status: Status;
+          qr: string | null;
+          pairingCode?: string | null;
+          pairingCodeExpiresAt?: number;
+        };
         if (!active) return;
         setQr(body.qr ?? null);
         setPairingCode(body.pairingCode ?? null);
+        setPairingExpiresAt(body.pairingCodeExpiresAt ?? 0);
         if (body.status !== statusRef.current) {
+          const prev = statusRef.current;
           statusRef.current = body.status;
           setStatus(body.status);
           if (body.status === "logged_out") {
             setQr(null);
             setPairingCode(null);
-            toast.error("WhatsApp was disconnected. Please reconnect.");
+            setPairingExpiresAt(0);
+            // Don't double-toast on first paint (page loaded already-logged-out).
+            if (prev !== "logged_out") toast.error("WhatsApp was disconnected on your phone. Please pair again.");
           }
         }
       } catch {
@@ -56,6 +67,13 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
     };
   }, []);
 
+  // Tick once a second so the countdown renders smoothly.
+  useEffect(() => {
+    if (!pairingCode || !pairingExpiresAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [pairingCode, pairingExpiresAt]);
+
   const handleConnect = async () => {
     if (mode === "phone" && phone.replace(/[^0-9]/g, "").length < 7) {
       toast.error("Enter your full phone number with country code (digits only).");
@@ -65,6 +83,7 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
     setStatus("connecting");
     setQr(null);
     setPairingCode(null);
+    setPairingExpiresAt(0);
     try {
       const res = await fetch("/api/whatsapp/connect", {
         method: "POST",
@@ -97,6 +116,18 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
   const meta = STATUS_META[status];
   const isConnected = status === "connected";
   const connecting = status === "connecting";
+  const isLoggedOut = status === "logged_out";
+
+  // Pairing-code countdown: clear locally once expired so we don't show a stale
+  // code, and prompt for a fresh one. The gateway also clears it server-side.
+  const pairingMsLeft = pairingCode && pairingExpiresAt ? Math.max(0, pairingExpiresAt - now) : 0;
+  const pairingExpired = pairingCode != null && pairingMsLeft === 0;
+  const displayPairing = pairingCode && !pairingExpired ? pairingCode : null;
+  const pairingMmSs = (() => {
+    if (!displayPairing) return null;
+    const s = Math.ceil(pairingMsLeft / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  })();
 
   return (
     <Card className="overflow-hidden">
@@ -112,6 +143,15 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
       </div>
 
       <div className="space-y-6 p-6">
+        {isLoggedOut ? (
+          <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            <p className="font-semibold">Your WhatsApp was disconnected.</p>
+            <p className="mt-0.5 text-danger/80">
+              The linked device was removed from your phone. Pair again to resume posting.
+            </p>
+          </div>
+        ) : null}
+
         {!isConnected ? (
           <>
             {/* mode switch */}
@@ -140,21 +180,35 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
               </div>
             ) : null}
 
-            {/* Phone mode: code shown once issued */}
-            {mode === "phone" && pairingCode ? (
+            {/* Phone mode: live pairing code with countdown */}
+            {mode === "phone" && displayPairing ? (
               <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface-2/50 py-8">
                 <p className="text-sm font-medium">Enter this code on your phone</p>
                 <div className="rounded-xl bg-white px-6 py-3 font-mono text-3xl font-bold tracking-[0.3em] text-on-brand">
-                  {pairingCode}
+                  {displayPairing}
                 </div>
+                <p className="text-xs text-muted">
+                  Expires in <span className="font-mono font-semibold text-foreground">{pairingMmSs}</span>
+                </p>
                 <p className="max-w-xs text-center text-xs text-muted">
                   WhatsApp → Linked devices → Link a device → <strong className="text-foreground">Link with phone number instead</strong> → enter the code.
                 </p>
               </div>
             ) : null}
 
+            {/* Phone mode: code expired — prompt to regenerate */}
+            {mode === "phone" && pairingExpired ? (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-warning/30 bg-warning/10 py-8 text-center">
+                <p className="text-sm font-medium text-warning">Your pairing code expired.</p>
+                <p className="max-w-xs text-xs text-warning/80">Get a new one to continue linking your device.</p>
+                <Button onClick={handleConnect} disabled={busy}>
+                  {busy ? <Spinner /> : null} Get new code
+                </Button>
+              </div>
+            ) : null}
+
             {/* Phone input (before code) */}
-            {mode === "phone" && !pairingCode ? (
+            {mode === "phone" && !pairingCode && !pairingExpired ? (
               <div className="space-y-2">
                 <Input
                   type="tel"
@@ -163,22 +217,24 @@ export function WhatsAppConnect({ initialStatus }: { initialStatus: Status }) {
                   onChange={(e) => setPhone(e.target.value)}
                   disabled={connecting}
                 />
-                <p className="text-xs text-faint">Digits only, no “+”. Use the number on the WhatsApp account.</p>
+                <p className="text-xs text-faint">Digits only, no &ldquo;+&rdquo;. Use the number on the WhatsApp account.</p>
               </div>
             ) : null}
 
-            {connecting && !qr && !pairingCode ? (
+            {connecting && !qr && !displayPairing && !pairingExpired ? (
               <div className="flex items-center justify-center gap-3 rounded-2xl border border-line bg-surface-2/50 py-8 text-muted">
                 <Spinner className="text-brand" /> {mode === "phone" ? "Generating code…" : "Waiting for QR code…"}
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-3">
-              <Button onClick={handleConnect} disabled={busy || (connecting && (Boolean(qr) || Boolean(pairingCode)))}>
-                {busy || connecting ? <Spinner /> : null}
-                {mode === "phone" ? "Get pairing code" : "Connect WhatsApp"}
-              </Button>
-            </div>
+            {!pairingExpired ? (
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={handleConnect} disabled={busy || (connecting && (Boolean(qr) || Boolean(displayPairing)))}>
+                  {busy || connecting ? <Spinner /> : null}
+                  {mode === "phone" ? (isLoggedOut ? "Pair again" : "Get pairing code") : isLoggedOut ? "Pair again" : "Connect WhatsApp"}
+                </Button>
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="flex items-center justify-between">

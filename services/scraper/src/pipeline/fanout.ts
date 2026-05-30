@@ -12,36 +12,36 @@ interface Subscriber {
   feedConfigId: string;
   userId: string;
   filters: FeedFilters;
-  channelJid: string;
-  branded: boolean; // append the watermark? (true unless the tier removes branding)
-  window: ActiveWindow | null; // Pro active-hours window; null = deliver immediately
+  channelId: string;       // whatsapp_channels.id — used for per-channel dedup
+  channelJid: string;      // newsletter JID the gateway sends to
+  branded: boolean;
+  window: ActiveWindow | null;
 }
 
-// Active subscribers of a handle whose WhatsApp session is connected and has a
-// target channel selected. (whatsapp_sessions has no FK to feed_configurations,
-// so we resolve channels in a second query rather than an embedded join.)
+/**
+ * Build one Subscriber per (active feed × routed channel) where the user is
+ * connected. With Wave 3a, a feed can route to MANY channels (Pro), so a single
+ * tweet may fan out to multiple destinations for the same user.
+ */
 async function getSubscribers(handleId: string): Promise<Subscriber[]> {
   const { data: configs, error } = await supabase
     .from("feed_configurations")
-    .select("id, user_id, channel_id, include_retweets, include_replies, forward_media, include_videos, exclude_links")
+    .select("id, user_id, include_retweets, include_replies, forward_media, include_videos, exclude_links")
     .eq("tracked_handle_id", handleId)
     .eq("is_active", true);
   if (error) throw error;
   if (!configs || configs.length === 0) return [];
 
+  const configIds = configs.map((c) => c.id);
   const userIds = [...new Set(configs.map((c) => c.user_id))];
 
-  // The user's WhatsApp account must be connected (one session per user)...
-  const { data: sessions, error: sErr } = await supabase
-    .from("whatsapp_sessions")
-    .select("user_id")
-    .in("user_id", userIds)
-    .eq("status", "connected");
-  if (sErr) throw sErr;
-  const connectedUsers = new Set((sessions ?? []).map((s) => s.user_id));
+  // Each feed's routed channels (Wave 3a: may be 1..N for Pro, 1 for others).
+  const { data: routes } = await supabase
+    .from("feed_channel_routes")
+    .select("feed_configuration_id, channel_id")
+    .in("feed_configuration_id", configIds);
 
-  // ...and each feed routes to a specific channel (Wave 3).
-  const channelIds = [...new Set(configs.map((c) => c.channel_id).filter((id): id is string => Boolean(id)))];
+  const channelIds = [...new Set((routes ?? []).map((r) => r.channel_id))];
   const jidByChannel = new Map<string, string>();
   if (channelIds.length) {
     const { data: channels } = await supabase
@@ -51,14 +51,32 @@ async function getSubscribers(handleId: string): Promise<Subscriber[]> {
     for (const ch of channels ?? []) jidByChannel.set(ch.id, ch.channel_jid);
   }
 
-  // Resolve each user's tier -> branding + scheduling permission.
+  // feedConfigId -> [{channelId, channelJid}]
+  const routesByFeed = new Map<string, { channelId: string; channelJid: string }[]>();
+  for (const r of routes ?? []) {
+    const jid = jidByChannel.get(r.channel_id);
+    if (!jid) continue;
+    const arr = routesByFeed.get(r.feed_configuration_id) ?? [];
+    arr.push({ channelId: r.channel_id, channelJid: jid });
+    routesByFeed.set(r.feed_configuration_id, arr);
+  }
+
+  // Connected sessions (one WhatsApp account per user).
+  const { data: sessions } = await supabase
+    .from("whatsapp_sessions")
+    .select("user_id")
+    .in("user_id", userIds)
+    .eq("status", "connected");
+  const connectedUsers = new Set((sessions ?? []).map((s) => s.user_id));
+
+  // Tier-derived flags.
   const { data: subs } = await supabase.from("subscriptions").select("user_id, tier").in("user_id", userIds);
   const { data: plans } = await supabase.from("plan_limits").select("tier, remove_branding, allow_scheduling");
   const removeBrandingByTier = new Map((plans ?? []).map((p) => [p.tier, p.remove_branding]));
   const allowSchedulingByTier = new Map((plans ?? []).map((p) => [p.tier, p.allow_scheduling]));
   const tierByUser = new Map((subs ?? []).map((s) => [s.user_id, s.tier]));
 
-  // Active-hours windows (Pro), keyed by user.
+  // Active-hours window per user (Pro only).
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, timezone, schedule_enabled, schedule_start, schedule_end")
@@ -73,41 +91,49 @@ async function getSubscribers(handleId: string): Promise<Subscriber[]> {
     );
   }
 
-  return configs
-    .filter((c) => connectedUsers.has(c.user_id) && c.channel_id && jidByChannel.has(c.channel_id))
-    .map((c) => {
-      const tier = tierByUser.get(c.user_id);
-      return {
-        feedConfigId: c.id,
-        userId: c.user_id,
-        filters: {
-          include_retweets: c.include_retweets,
-          include_replies: c.include_replies,
-          forward_media: c.forward_media,
-          include_videos: c.include_videos,
-          exclude_links: c.exclude_links,
-        },
-        channelJid: jidByChannel.get(c.channel_id!)!,
-        branded: !(tier ? (removeBrandingByTier.get(tier) ?? false) : false),
-        window: windowByUser.get(c.user_id) ?? null,
-      };
-    });
+  // Flatten: one Subscriber per (feed × channel) the user is connected for.
+  const out: Subscriber[] = [];
+  for (const c of configs) {
+    if (!connectedUsers.has(c.user_id)) continue;
+    const channels = routesByFeed.get(c.id);
+    if (!channels?.length) continue;
+    const tier = tierByUser.get(c.user_id);
+    const branded = !(tier ? (removeBrandingByTier.get(tier) ?? false) : false);
+    const window = windowByUser.get(c.user_id) ?? null;
+    const filters: FeedFilters = {
+      include_retweets: c.include_retweets,
+      include_replies: c.include_replies,
+      forward_media: c.forward_media,
+      include_videos: c.include_videos,
+      exclude_links: c.exclude_links,
+    };
+    for (const ch of channels) {
+      out.push({ feedConfigId: c.id, userId: c.user_id, filters, channelId: ch.channelId, channelJid: ch.channelJid, branded, window });
+    }
+  }
+  return out;
 }
 
-// Durable idempotency: returns true only if THIS call created the row. The
-// unique (feed_configuration_id, tweet_id) constraint makes a duplicate a no-op,
-// so a tweet is enqueued at most once per channel even across restarts.
-async function reserveDelivery(feedConfigId: string, tweetId: string): Promise<boolean> {
+/**
+ * Durable per-channel idempotency. The unique (feed_configuration_id, tweet_id,
+ * channel_id) constraint makes a duplicate a no-op, so a tweet is enqueued at
+ * most once per channel even across restarts.
+ */
+async function reserveDelivery(
+  feedConfigId: string,
+  tweetId: string,
+  channelId: string,
+): Promise<boolean> {
   const { error } = await supabase
     .from("published_messages")
-    .insert({ feed_configuration_id: feedConfigId, tweet_id: tweetId, status: "queued" });
+    .insert({ feed_configuration_id: feedConfigId, tweet_id: tweetId, channel_id: channelId, status: "queued" });
   if (!error) return true;
   if (error.code === "23505") return false; // already reserved by a previous cycle
-  log.error({ err: error, feedConfigId, tweetId }, "failed to reserve delivery");
+  log.error({ err: error, feedConfigId, tweetId, channelId }, "failed to reserve delivery");
   return false;
 }
 
-/** FR-4.3: format per subscriber's rules and enqueue to the gateway. */
+/** Format per subscriber's rules and enqueue to the gateway, per routed channel. */
 export async function fanOutTweet(
   screenName: string,
   handleId: string,
@@ -118,16 +144,16 @@ export async function fanOutTweet(
 
   for (const sub of subscribers) {
     if (!passesFilters(tweet, sub.filters)) continue;
-    if (!(await reserveDelivery(sub.feedConfigId, tweet.id))) continue;
+    if (!(await reserveDelivery(sub.feedConfigId, tweet.id, sub.channelId))) continue;
 
     const { text, mediaUrl, mediaType } = formatMessage(screenName, tweet, sub.filters, sub.branded);
-    // Active-hours: hold off-window posts as delayed jobs (released when it reopens).
     const delay = sub.window ? sendDelayMs(sub.window) : 0;
     await sendQueue.add(
       "send",
       {
         userId: sub.userId,
         channelJid: sub.channelJid,
+        channelId: sub.channelId,
         text,
         mediaUrl,
         mediaType,
@@ -136,7 +162,7 @@ export async function fanOutTweet(
       },
       { delay, attempts: 3, backoff: { type: "exponential", delay: 5_000 }, removeOnComplete: 1000, removeOnFail: 5000 },
     );
-    if (delay > 0) log.info({ userId: sub.userId, tweetId: tweet.id, delayMs: delay }, "post held until window opens");
+    if (delay > 0) log.info({ userId: sub.userId, tweetId: tweet.id, channelId: sub.channelId, delayMs: delay }, "post held until window opens");
     enqueued += 1;
   }
 

@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      feed_channel_routes: {
+        Row: {
+          channel_id: string
+          created_at: string
+          feed_configuration_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          feed_configuration_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          feed_configuration_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_channel_routes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feed_channel_routes_feed_configuration_id_fkey"
+            columns: ["feed_configuration_id"]
+            isOneToOne: false
+            referencedRelation: "feed_configurations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feed_configurations: {
         Row: {
           channel_id: string | null
@@ -161,6 +194,7 @@ export type Database = {
       }
       published_messages: {
         Row: {
+          channel_id: string
           created_at: string
           error: string | null
           feed_configuration_id: string
@@ -170,6 +204,7 @@ export type Database = {
           tweet_id: string
         }
         Insert: {
+          channel_id: string
           created_at?: string
           error?: string | null
           feed_configuration_id: string
@@ -179,6 +214,7 @@ export type Database = {
           tweet_id: string
         }
         Update: {
+          channel_id?: string
           created_at?: string
           error?: string | null
           feed_configuration_id?: string
@@ -188,6 +224,13 @@ export type Database = {
           tweet_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "published_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "published_messages_feed_configuration_id_fkey"
             columns: ["feed_configuration_id"]
@@ -394,7 +437,7 @@ export type Database = {
     Functions: {
       add_feed_configuration: {
         Args: {
-          p_channel_id?: string
+          p_channel_ids?: string[]
           p_exclude_links?: boolean
           p_forward_media?: boolean
           p_include_replies?: boolean

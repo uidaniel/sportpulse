@@ -1,10 +1,16 @@
 import makeWASocket, {
+  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   type WASocket,
   type ConnectionState,
 } from "baileys";
+
+// WhatsApp issues pairing codes that survive ~3 minutes; we surface a 2-minute
+// window in the UI so users always have a grace period to retype before it goes
+// stale on WhatsApp's side.
+const PAIRING_CODE_TTL_MS = 2 * 60 * 1000;
 import { Boom } from "@hapi/boom";
 import qrcodeTerminal from "qrcode-terminal";
 import { config } from "../config";
@@ -31,15 +37,28 @@ interface SessionEntry {
   /** phone-number pairing: when set, link via code instead of QR */
   usePairing: boolean;
   pairingCode: string | null;
+  /** epoch ms when the current pairing code expires (or 0 if none) */
+  pairingCodeExpiresAt: number;
 }
 
 /** Current state for HTTP polling; null if no live session in this process. */
 export function getSessionState(
   userId: string,
-): { status: WhatsAppStatus; qr: string | null; pairingCode: string | null } | null {
+): { status: WhatsAppStatus; qr: string | null; pairingCode: string | null; pairingCodeExpiresAt: number } | null {
   const entry = sessions.get(userId);
   if (!entry) return null;
-  return { status: entry.status, qr: entry.lastQr, pairingCode: entry.pairingCode };
+  // Self-expire so the dashboard never sees a stale code beyond the TTL even if
+  // the user keeps the tab open without re-polling.
+  if (entry.pairingCode && Date.now() >= entry.pairingCodeExpiresAt) {
+    entry.pairingCode = null;
+    entry.pairingCodeExpiresAt = 0;
+  }
+  return {
+    status: entry.status,
+    qr: entry.lastQr,
+    pairingCode: entry.pairingCode,
+    pairingCodeExpiresAt: entry.pairingCodeExpiresAt,
+  };
 }
 
 const sessions = new Map<string, SessionEntry>();
@@ -79,7 +98,10 @@ export async function connect(userId: string, phoneNumber?: string): Promise<voi
       creds: auth.state.creds,
       keys: makeCacheableSignalKeyStore(auth.state.keys, waLogger),
     },
-    browser: ["SportPulse", "Chrome", "1.0.0"],
+    // Pairing-code linking ONLY works when the browser identifier is one of the
+    // ones WhatsApp recognises (Safari/Chrome/etc on a known OS). A custom name
+    // like "SportPulse" was being rejected with "Couldn't link device".
+    browser: usePairing ? Browsers.macOS("Safari") : Browsers.macOS("Desktop"),
     markOnlineOnConnect: false,
     syncFullHistory: false,
   });
@@ -96,6 +118,7 @@ export async function connect(userId: string, phoneNumber?: string): Promise<voi
     lastQr: null,
     usePairing,
     pairingCode: null,
+    pairingCodeExpiresAt: 0,
   };
   sessions.set(userId, entry);
 
@@ -110,8 +133,9 @@ export async function connect(userId: string, phoneNumber?: string): Promise<voi
         .requestPairingCode(number)
         .then((code) => {
           entry.pairingCode = code;
+          entry.pairingCodeExpiresAt = Date.now() + PAIRING_CODE_TTL_MS;
           entry.status = "connecting";
-          log.info({ userId }, "pairing code issued");
+          log.info({ userId, expiresAt: entry.pairingCodeExpiresAt }, "pairing code issued");
         })
         .catch((err) => log.error({ err, userId }, "requestPairingCode failed"));
     }, 3000);
@@ -157,6 +181,7 @@ async function handleConnectionUpdate(entry: SessionEntry, update: Partial<Conne
     entry.status = "connected";
     entry.lastQr = null;
     entry.pairingCode = null;
+    entry.pairingCodeExpiresAt = 0;
     const phoneJid = entry.sock.user?.id ?? null;
     log.info({ userId, phoneJid }, "connection open");
     await updateStatus(sessionId, "connected", { phone_jid: phoneJid, last_connect: true });

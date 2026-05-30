@@ -112,6 +112,7 @@ export function buildServer() {
       await sendQueue.add("send", {
         userId,
         channelJid: body.channelJid,
+        channelId: randomUUID(), // smoke test: no real published_messages row to update
         text: body.text,
         mediaUrl: body.mediaUrl ?? null,
         feedConfigurationId: body.feedConfigurationId ?? randomUUID(),

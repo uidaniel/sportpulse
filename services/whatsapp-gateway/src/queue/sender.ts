@@ -32,7 +32,8 @@ async function markDelivery(
       sent_at: status === "sent" ? new Date().toISOString() : null,
     })
     .eq("feed_configuration_id", job.feedConfigurationId)
-    .eq("tweet_id", job.tweetId);
+    .eq("tweet_id", job.tweetId)
+    .eq("channel_id", job.channelId);
   if (dbErr) log.error({ err: dbErr, job }, "failed to update published_messages");
 }
 

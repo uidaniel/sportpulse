@@ -10,6 +10,7 @@ export const SEND_QUEUE = "wa-send";
 export interface SendJobData {
   userId: string;
   channelJid: string;
+  channelId: string; // whatsapp_channels.id — used by the gateway for per-channel dedup
   text: string;
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;
