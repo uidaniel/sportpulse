@@ -2,6 +2,34 @@ import { Scraper } from "@the-convocation/twitter-scraper";
 
 const scraper = new Scraper();
 
+/**
+ * Cloud egress IPs (Railway/Fly/etc) get hostile guest sessions from X — every
+ * profile lookup returns "Sorry, that page does not exist" (error code 34).
+ * Authenticated cookies bypass that. Set X_AUTH_TOKEN + X_CT0 from a logged-in
+ * X session (use a burner account, not your main).
+ */
+let authPromise = null;
+async function ensureAuth() {
+  if (authPromise) return authPromise;
+  const authToken = process.env.X_AUTH_TOKEN;
+  const ct0 = process.env.X_CT0;
+  if (!authToken || !ct0) {
+    authPromise = Promise.resolve(false);
+    console.log("twitter-scrape: no auth cookies — running guest mode (likely to fail from cloud IPs)");
+    return authPromise;
+  }
+  authPromise = (async () => {
+    await scraper.setCookies([
+      `auth_token=${authToken}; Domain=.x.com; Path=/; Secure; HttpOnly`,
+      `ct0=${ct0}; Domain=.x.com; Path=/; Secure`
+    ]);
+    const ok = await scraper.isLoggedIn();
+    console.log(`twitter-scrape: auth cookies applied, isLoggedIn=${ok}`);
+    return ok;
+  })();
+  return authPromise;
+}
+
 class ScrapeError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -176,6 +204,7 @@ export async function scrapeProfilePosts(options = {}) {
   const fetchCount = Math.max(limit * 4, 40);
 
   try {
+    await ensureAuth();
     const posts = [];
 
     for await (const tweet of scraper.getTweets(handle, fetchCount)) {
