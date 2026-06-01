@@ -5,11 +5,11 @@ import type { NormalizedTweet, QuotedTweet } from "./types";
 const log = logger.child({ module: "x/client-custom" });
 
 // ===========================================================================
-// Custom no-auth adapter. Talks to the @the-convocation/twitter-scraper-based
-// HTTP service in /custom_server (configured via CUSTOM_SCRAPER_URL).
+// Custom no-auth adapter. Talks to the Next.js server route backed by
+// @the-convocation/twitter-scraper (configured via CUSTOM_SCRAPER_URL).
 //
 // Request : GET {CUSTOM_SCRAPER_URL}/api/twitter/<handle>?limit=N
-// Response: { ok, posts: CustomPost[] } — see custom_server/scraper.js
+// Response: { ok, posts: CustomPost[] } — see apps/web/src/lib/x/scraper.ts
 // ===========================================================================
 
 const TWEETS_PER_FETCH = 20;
@@ -78,7 +78,11 @@ function toNormalized(post: CustomPost, screenName: string): NormalizedTweet {
 export async function fetchLatestTweets(screenName: string): Promise<NormalizedTweet[]> {
   const base = config.CUSTOM_SCRAPER_URL!.replace(/\/+$/, "");
   const url = `${base}/api/twitter/${encodeURIComponent(screenName)}?limit=${TWEETS_PER_FETCH}`;
-  const res = await fetch(url);
+  const headers: Record<string, string> = {};
+  if (config.CUSTOM_SCRAPER_TOKEN) {
+    headers.authorization = `Bearer ${config.CUSTOM_SCRAPER_TOKEN}`;
+  }
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`custom scraper ${res.status} for @${screenName}: ${body.slice(0, 160)}`);

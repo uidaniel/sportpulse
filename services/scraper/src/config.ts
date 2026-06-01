@@ -16,11 +16,14 @@ const schema = z.object({
   REDIS_URL: z.string().startsWith("redis"),
 
   // Which X source to use. "rapidapi" hits twitter241 via x/client.ts; "custom"
-  // hits the no-auth scraper in custom_server/ via x/client-custom.ts.
+  // hits the no-auth scraper route in apps/web via x/client-custom.ts.
   X_SOURCE: z.enum(["rapidapi", "custom"]).default("rapidapi"),
-  // Required when X_SOURCE=custom. Points at the custom_server (e.g. https://
-  // sportpulse-scraper.up.railway.app).
+  // Required when X_SOURCE=custom. Points at the web app base URL
+  // (e.g. https://app.sportpulse.com).
   CUSTOM_SCRAPER_URL: z.string().url().optional(),
+  // Optional bearer token sent to /api/twitter. Set this to match SCRAPER_API_TOKEN
+  // in the web server for internal worker access.
+  CUSTOM_SCRAPER_TOKEN: z.string().optional(),
 
   // RapidAPI X scraper. Required when X_SOURCE=rapidapi; optional otherwise so
   // a custom-only deploy can omit the keys entirely.

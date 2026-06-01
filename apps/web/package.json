@@ -12,6 +12,7 @@
     "@base-ui/react": "^1.5.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
+    "@the-convocation/twitter-scraper": "^0.22.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.17.0",

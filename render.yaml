@@ -1,10 +1,9 @@
-# Render Blueprint — deploys the two always-on workers.
+# Render Blueprint — deploys the always-on services.
 # (The Next.js dashboard is best deployed on Vercel; see DEPLOY notes.)
 #
-# Both must be always-on: the gateway holds the WhatsApp socket, the scraper
-# polls on a schedule. Render's free web tier spins down after ~15 min idle
-# (which would drop the WhatsApp connection), and workers require a paid plan —
-# so both use the Starter plan.
+# The gateway holds the WhatsApp socket, and the scraper polls on a schedule.
+# For X_SOURCE=custom, the scraper worker calls the Next.js web server's
+# internal /api/twitter route (set CUSTOM_SCRAPER_URL accordingly).
 services:
   # WhatsApp gateway — Baileys sockets + HTTP control API (dashboard calls this).
   - type: web
@@ -48,14 +47,14 @@ services:
         value: "22"
       - key: SUPABASE_URL
         value: https://upfjegitipgsrovminhw.supabase.co
-      - key: RAPIDAPI_HOST
-        value: twitter241.p.rapidapi.com
-      - key: RAPIDAPI_BASE_URL
-        value: https://twitter241.p.rapidapi.com
+      - key: X_SOURCE
+        value: custom
+      - key: CUSTOM_SCRAPER_URL
+        sync: false
+      - key: CUSTOM_SCRAPER_TOKEN
+        sync: false
       # secrets — set in the Render dashboard:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: REDIS_URL
-        sync: false
-      - key: RAPIDAPI_KEY
         sync: false
