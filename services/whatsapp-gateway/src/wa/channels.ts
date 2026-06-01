@@ -134,6 +134,31 @@ export interface SendOptions {
   text: string;
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;
+  /**
+   * When set, the receiving chat (typically a group during auto-share fan-out)
+   * renders this message as "Forwarded from <name>" with a View Channel button,
+   * instead of looking like a fresh message the user typed.
+   */
+  forwardFromChannel?: { jid: string; name: string } | null;
+}
+
+/**
+ * WhatsApp ContextInfo block that turns a normal send into a "Forwarded from
+ * <channel>" presentation. serverMessageId 0 is a placeholder — the header
+ * still renders from newsletterJid + newsletterName; the "View Channel" tap
+ * action just won't deep-link to a specific message position.
+ */
+function newsletterForwardContext(channel: { jid: string; name: string }) {
+  return {
+    forwardingScore: 1,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: channel.jid,
+      serverMessageId: 0,
+      newsletterName: channel.name,
+      contentType: 1, // proto.ContextInfo.ForwardedNewsletterMessageInfo.ContentType.UPDATE
+    },
+  };
 }
 
 export interface GroupInfo {
@@ -168,24 +193,34 @@ export async function listGroups(userId: string): Promise<GroupInfo[]> {
   return out;
 }
 
-/** Send a formatted update to a WhatsApp channel. Throttling is the caller's job. */
+/**
+ * Send a formatted update to a WhatsApp destination JID (channel or group).
+ * When `forwardFromChannel` is set, the message is attributed as forwarded from
+ * that channel — used by the auto-share fan-out so groups see "Forwarded from".
+ * Throttling is the caller's job.
+ */
 export async function sendToChannel(
   userId: string,
-  channelJid: string,
-  { text, mediaUrl, mediaType }: SendOptions,
+  destinationJid: string,
+  { text, mediaUrl, mediaType, forwardFromChannel }: SendOptions,
 ): Promise<void> {
   const entry = getEntry(userId);
   if (!entry?.sock.user) throw new SessionNotConnectedError(userId);
 
+  const ctx = forwardFromChannel ? newsletterForwardContext(forwardFromChannel) : undefined;
+
   let content: AnyMessageContent;
   if (mediaUrl && mediaType === "video") {
-    content = { video: { url: mediaUrl }, caption: text || undefined };
+    content = { video: { url: mediaUrl }, caption: text || undefined, ...(ctx ? { contextInfo: ctx } : {}) };
   } else if (mediaUrl) {
-    content = { image: { url: mediaUrl }, caption: text || undefined };
+    content = { image: { url: mediaUrl }, caption: text || undefined, ...(ctx ? { contextInfo: ctx } : {}) };
   } else {
-    content = { text };
+    content = { text, ...(ctx ? { contextInfo: ctx } : {}) };
   }
 
-  await entry.sock.sendMessage(channelJid, content);
-  log.info({ userId, channelJid, mediaType: mediaType ?? "none" }, "message sent to channel");
+  await entry.sock.sendMessage(destinationJid, content);
+  log.info(
+    { userId, destinationJid, mediaType: mediaType ?? "none", forwarded: Boolean(ctx) },
+    "message sent",
+  );
 }

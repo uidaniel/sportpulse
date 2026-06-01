@@ -62,6 +62,14 @@ async function fanOutToGroups(parent: SendJobData): Promise<void> {
   }
   if (!routes || routes.length === 0) return;
 
+  // Pull the source channel's JID + display name so group sends can be
+  // attributed as "Forwarded from <channelName>" with a View Channel button.
+  const { data: channelRow } = await supabase
+    .from("whatsapp_channels")
+    .select("channel_jid, channel_name")
+    .eq("id", parent.channelId)
+    .maybeSingle();
+
   const groupIds = routes.map((r) => r.group_id);
   const { data: groups, error: groupsErr } = await supabase
     .from("whatsapp_groups")
@@ -95,7 +103,13 @@ async function fanOutToGroups(parent: SendJobData): Promise<void> {
     const delay = 3000 + i * 2000;
     await sendQueue.add(
       "send",
-      { ...parent, channelJid: groupJid, skipGroupFanout: true },
+      {
+        ...parent,
+        channelJid: groupJid,
+        skipGroupFanout: true,
+        forwardFromChannelJid: channelRow?.channel_jid ?? parent.channelJid,
+        forwardFromChannelName: channelRow?.channel_name ?? "Channel",
+      },
       { delay, attempts: 3, backoff: { type: "exponential", delay: 5_000 }, removeOnComplete: 1000, removeOnFail: 5000 },
     );
     enqueued += 1;
@@ -120,6 +134,10 @@ export function startSenderWorker(): Worker<SendJobData> {
           text: data.text,
           mediaUrl: data.mediaUrl,
           mediaType: data.mediaType,
+          forwardFromChannel:
+            data.forwardFromChannelJid && data.forwardFromChannelName
+              ? { jid: data.forwardFromChannelJid, name: data.forwardFromChannelName }
+              : null,
         });
         await markDelivery(data, "sent");
         // Group fan-out runs ONLY after the channel send succeeded. Its failure

@@ -18,6 +18,9 @@ export interface SendJobData {
   tweetId: string;
   /** Set on derived group sends so they don't re-trigger their own fan-out. */
   skipGroupFanout?: boolean;
+  /** When set, render this group send as "Forwarded from <channel name>". */
+  forwardFromChannelJid?: string;
+  forwardFromChannelName?: string;
 }
 
 // BullMQ requires maxRetriesPerRequest = null on the shared connection.

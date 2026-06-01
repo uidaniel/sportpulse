@@ -18,8 +18,10 @@ export interface SendJobData {
   mediaType?: "image" | "video" | null;
   feedConfigurationId: string;
   tweetId: string;
-  /** Internal flag used by the gateway; the scraper never sets this. */
+  /** Internal flag used by the gateway; the scraper never sets these. */
   skipGroupFanout?: boolean;
+  forwardFromChannelJid?: string;
+  forwardFromChannelName?: string;
 }
 
 export const redisConnection = new IORedis(config.REDIS_URL, { maxRetriesPerRequest: null });
