@@ -9,13 +9,17 @@ export const SEND_QUEUE = "wa-send";
 
 export interface SendJobData {
   userId: string;
+  /** Destination JID — channel for primary sends; the gateway may also enqueue group JIDs internally. */
   channelJid: string;
-  channelId: string; // whatsapp_channels.id — used by the gateway for per-channel dedup
+  /** Source channel UUID — used by the gateway for per-destination dedup and group fan-out lookup. */
+  channelId: string;
   text: string;
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;
   feedConfigurationId: string;
   tweetId: string;
+  /** Internal flag used by the gateway; the scraper never sets this. */
+  skipGroupFanout?: boolean;
 }
 
 export const redisConnection = new IORedis(config.REDIS_URL, { maxRetriesPerRequest: null });

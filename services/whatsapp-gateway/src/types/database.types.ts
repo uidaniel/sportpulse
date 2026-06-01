@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      channel_group_routes: {
+        Row: {
+          channel_id: string
+          created_at: string
+          group_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          group_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_group_routes_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_group_routes_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feed_channel_routes: {
         Row: {
           channel_id: string
@@ -123,6 +156,7 @@ export type Database = {
           allow_scheduling: boolean
           allow_video: boolean
           max_channels: number
+          max_groups_per_channel: number
           max_handles: number
           max_send_delay_ms: number
           min_send_delay_ms: number
@@ -135,6 +169,7 @@ export type Database = {
           allow_scheduling?: boolean
           allow_video?: boolean
           max_channels?: number
+          max_groups_per_channel?: number
           max_handles: number
           max_send_delay_ms?: number
           min_send_delay_ms?: number
@@ -147,6 +182,7 @@ export type Database = {
           allow_scheduling?: boolean
           allow_video?: boolean
           max_channels?: number
+          max_groups_per_channel?: number
           max_handles?: number
           max_send_delay_ms?: number
           min_send_delay_ms?: number
@@ -204,6 +240,7 @@ export type Database = {
           id: string
           sent_at: string | null
           status: Database["public"]["Enums"]["delivery_status"]
+          target_jid: string
           tweet_id: string
         }
         Insert: {
@@ -214,6 +251,7 @@ export type Database = {
           id?: string
           sent_at?: string | null
           status?: Database["public"]["Enums"]["delivery_status"]
+          target_jid?: string
           tweet_id: string
         }
         Update: {
@@ -224,6 +262,7 @@ export type Database = {
           id?: string
           sent_at?: string | null
           status?: Database["public"]["Enums"]["delivery_status"]
+          target_jid?: string
           tweet_id?: string
         }
         Relationships: [
@@ -361,6 +400,36 @@ export type Database = {
           channel_name?: string
           created_at?: string
           id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_groups: {
+        Row: {
+          created_at: string
+          group_jid: string
+          group_name: string
+          id: string
+          is_admin: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_jid: string
+          group_name: string
+          id?: string
+          is_admin?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          group_jid?: string
+          group_name?: string
+          id?: string
+          is_admin?: boolean
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

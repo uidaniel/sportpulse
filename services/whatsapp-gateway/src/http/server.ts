@@ -3,7 +3,7 @@ import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../logger";
 import { connect, logout, isConnected, getSessionState } from "../wa/sessionManager";
-import { listChannels, resolveChannelByInvite, SessionNotConnectedError, ChannelAccessError } from "../wa/channels";
+import { listChannels, listGroups, resolveChannelByInvite, SessionNotConnectedError, ChannelAccessError } from "../wa/channels";
 import { getOrCreateSession } from "../db/sessions";
 import { sendQueue } from "../queue/sender";
 import { randomUUID } from "node:crypto";
@@ -88,6 +88,16 @@ export function buildServer() {
       const { userId } = userIdParam.parse(req.params);
       const channels = await listChannels(userId);
       res.json({ channels });
+    }),
+  );
+
+  // List WhatsApp groups the connected account is a member of (for auto-share).
+  app.get(
+    "/sessions/:userId/groups",
+    asyncHandler(async (req, res) => {
+      const { userId } = userIdParam.parse(req.params);
+      const groups = await listGroups(userId);
+      res.json({ groups });
     }),
   );
 

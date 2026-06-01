@@ -7,13 +7,17 @@ export const SEND_QUEUE = "wa-send";
 
 export interface SendJobData {
   userId: string;
+  /** Destination JID — a channel (@newsletter) for primary sends, a group (@g.us) for auto-share fan-outs. */
   channelJid: string;
-  channelId: string; // whatsapp_channels.id — narrows published_messages updates per channel
+  /** Source channel UUID — used for group fan-out lookup. Same value on the derived group sends for traceability. */
+  channelId: string;
   text: string;
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;
   feedConfigurationId: string;
   tweetId: string;
+  /** Set on derived group sends so they don't re-trigger their own fan-out. */
+  skipGroupFanout?: boolean;
 }
 
 // BullMQ requires maxRetriesPerRequest = null on the shared connection.

@@ -136,6 +136,38 @@ export interface SendOptions {
   mediaType?: "image" | "video" | null;
 }
 
+export interface GroupInfo {
+  id: string;     // group JID, e.g. 1203630xxxxxxxxx@g.us
+  name: string;
+  isAdmin: boolean;
+}
+
+/**
+ * List WhatsApp groups the connected account is a member of, with an `isAdmin`
+ * flag for each. Baileys ships `groupFetchAllParticipating()` which returns a
+ * map of jid -> GroupMetadata in one shot — no per-group round-trip.
+ */
+export async function listGroups(userId: string): Promise<GroupInfo[]> {
+  const entry = getEntry(userId);
+  const me = entry?.sock.user;
+  if (!me) throw new SessionNotConnectedError(userId);
+
+  const selfIds = [me.id, me.lid].filter(Boolean).map((j) => jidNormalizedUser(j as string));
+  const all = await entry!.sock.groupFetchAllParticipating();
+
+  const out: GroupInfo[] = [];
+  for (const meta of Object.values(all)) {
+    if (!meta?.id?.endsWith("@g.us")) continue;
+    const myEntry = meta.participants.find((p) => {
+      const pid = jidNormalizedUser(p.id);
+      return selfIds.includes(pid);
+    });
+    const isAdmin = Boolean(myEntry?.admin); // 'admin' | 'superadmin' | null
+    out.push({ id: meta.id, name: meta.subject || "WhatsApp Group", isAdmin });
+  }
+  return out;
+}
+
 /** Send a formatted update to a WhatsApp channel. Throttling is the caller's job. */
 export async function sendToChannel(
   userId: string,
