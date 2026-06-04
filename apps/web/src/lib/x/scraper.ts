@@ -200,8 +200,11 @@ export async function scrapeProfilePosts(options: {
   const includeReplies = toBoolean(options.includeReplies, false);
   const includeRetweets = toBoolean(options.includeRetweets, false);
 
-  // Over-fetch because replies/retweets may be filtered out.
-  const fetchCount = Math.max(limit * 4, 40);
+  // Over-fetch because replies/retweets may be filtered out. 2× is enough for
+  // typical timelines and keeps each call comfortably under the no-auth
+  // library's internal 20s timeout that big aggregator accounts like @utdtrey
+  // were tripping on.
+  const fetchCount = Math.max(limit * 2, 25);
 
   try {
     await ensureAuth();
