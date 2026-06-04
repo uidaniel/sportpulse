@@ -17,6 +17,8 @@ export async function GET(request: Request) {
       limit: url.searchParams.get("limit") ?? undefined,
       includeReplies: url.searchParams.get("includeReplies") ?? undefined,
       includeRetweets: url.searchParams.get("includeRetweets") ?? undefined,
+      includePinned: url.searchParams.get("includePinned") ?? undefined,
+      refresh: url.searchParams.get("refresh") ?? undefined,
     });
 
     return NextResponse.json(data);
